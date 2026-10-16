@@ -612,10 +612,10 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
    信封是画出来的（不是 emoji）：白纸 + 鲸鱼蓝描边 + 折口，深浅背景下都清楚；
    角标是微信那种「红圈白字」。整体小、浮在她头顶右上，不挡她本人。 */
 .dshp-mail{position:absolute;left:50%;bottom:100%;pointer-events:auto;cursor:pointer;
-  transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(-8px + var(--dshp-shift-y,0px)));
+  transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(34px + var(--dshp-shift-y,0px)));
   width:34px;height:28px;padding:0;border:0;background:transparent;display:grid;place-items:center;
   filter:drop-shadow(0 3px 7px rgba(10,20,50,.28));transition:transform .16s ease}
-.dshp-mail:hover{transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(-12px + var(--dshp-shift-y,0px))) scale(1.06)}
+.dshp-mail:hover{transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(30px + var(--dshp-shift-y,0px))) scale(1.06)}
 .dshp-mail svg{width:32px;height:25px;display:block}
 .dshp-mail .paper{fill:#f8fbff;stroke:#3b62f6;stroke-width:1.6}
 .dshp-mail .flap{fill:none;stroke:#3b62f6;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -721,6 +721,20 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   border-radius:calc(9px * var(--dshp-ps));
   padding:calc(7px * var(--dshp-ps)) calc(9px * var(--dshp-ps));outline:none}
 .dshp-panel textarea:focus{border-color:var(--dshp-accent)}
+.dshp-composer{width:min(calc(360px * var(--dshp-ps)),92vw)}
+.dshp-chat-log{display:flex;flex-direction:column;gap:7px;max-height:calc(300px * var(--dshp-ps));
+  overflow-y:auto;overscroll-behavior:contain;margin:calc(14px * var(--dshp-ps)) 0 8px;padding-right:2px}
+.dshp-msg{max-width:86%;padding:6px 10px;border-radius:12px;line-height:1.6;word-break:break-word;
+  user-select:text;-webkit-user-select:text;cursor:text;font-size:calc(12.5px * var(--dshp-ps))}
+.dshp-msg-me{align-self:flex-end;background:var(--dshp-accent);color:#fff;border-bottom-right-radius:4px;white-space:pre-wrap}
+.dshp-msg-her{align-self:flex-start;border:1px solid var(--dshp-line);border-bottom-left-radius:4px}
+.dshp-msg p{margin:0 0 6px}.dshp-msg p:last-child{margin-bottom:0}
+.dshp-msg ul,.dshp-msg ol{margin:2px 0 6px;padding-left:18px}
+.dshp-msg pre{margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:rgba(127,140,180,.14);
+  overflow-x:auto;white-space:pre;font:11.5px/1.5 ui-monospace,Menlo,monospace}
+.dshp-msg code{font:11.5px ui-monospace,Menlo,monospace;background:rgba(127,140,180,.16);padding:0 3px;border-radius:4px}
+.dshp-msg pre code{background:none;padding:0}
+.dshp-msg-h{font-weight:600;margin:4px 0}
 .dshp-row{display:flex;gap:6px;align-items:center;margin-top:7px;flex-wrap:wrap}
 .dshp-grow{flex:1}
 .dshp-tabs{display:flex;gap:3px;margin-bottom:7px;border-bottom:1px solid var(--dshp-line);padding-bottom:6px}
@@ -739,6 +753,10 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
 .dshp-hint{opacity:.5;font-size:calc(10.5px * var(--dshp-ps));margin-top:calc(6px * var(--dshp-ps));line-height:1.5;white-space:pre-wrap}
 .dshp-label{display:flex;align-items:center;gap:7px;margin:6px 0;font-size:11.5px}
 .dshp-label input[type=range]{flex:1;accent-color:var(--dshp-accent)}
+.dshp-model{display:block;width:100%;margin:6px 0;white-space:normal}
+.dshp-task{border:1px solid var(--dshp-line);border-radius:10px;padding:7px 10px;margin:6px 0;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.dshp-task-title{font-weight:600;font-size:13px}
+.dshp-task-dim{opacity:.62}
 /* ——— HUD：右键弹出的「余额 / 本轮消耗 / 峰谷计价」面板 ———
    主人要求：右键不再是设置菜单，而是这个框；信息要醒目、要盖在最上层、
    又要能自己收起来（不然挡住对话）。所以它是独立一层，z-index 比菜单还高。 */
@@ -1424,6 +1442,51 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     clearMotionPose()
   }
 
+  /**
+   * 主人嫌鲸鱼尾巴太长：靠尾鳍那段剪掉露在外面那条尾巴的三分之一。
+   * 尾巴是 5 节蒙皮网格（根 → 尾鳍）。沿「根节中心 → 尾鳍中心」这条轴，
+   * 根部不动、越往尾鳍往回收得越多，到尾鳍开始处收满 1/3，尾鳍整块平移、形状不变。
+   * 每帧用当前顶点重新算轴，尾巴摆动时也跟着走。
+   */
+  const TAIL_MESHES = ['ArtMesh38', 'ArtMesh56', 'ArtMesh58', 'ArtMesh59', 'ArtMesh60']
+  let tailIdx = null
+  function shortenTail() {
+    if (!tailIdx) {
+      tailIdx = TAIL_MESHES.map((id) => coreModel.getDrawableIndex(id))
+      if (tailIdx.some((i) => i < 0)) tailIdx = []
+    }
+    if (!tailIdx.length) return
+    const verts = tailIdx.map((i) => coreModel.getDrawableVertices(i))
+    const center = (v) => {
+      let x = 0, y = 0
+      for (let k = 0; k < v.length; k += 2) { x += v[k]; y += v[k + 1] }
+      return [(x * 2) / v.length, (y * 2) / v.length]
+    }
+    const B = center(verts[0])
+    const T = center(verts[verts.length - 1])
+    const dx = T[0] - B[0], dy = T[1] - B[1]
+    const len2 = dx * dx + dy * dy
+    if (len2 < 1e-8) return
+    const proj = (v, k) => ((v[k] - B[0]) * dx + (v[k + 1] - B[1]) * dy) / len2
+    let tMin = Infinity, tMax = -Infinity
+    for (const v of verts) for (let k = 0; k < v.length; k += 2) {
+      const t = proj(v, k)
+      if (t < tMin) tMin = t
+      if (t > tMax) tMax = t
+    }
+    let finStart = Infinity
+    const fin = verts[verts.length - 1]
+    for (let k = 0; k < fin.length; k += 2) finStart = Math.min(finStart, proj(fin, k))
+    if (!(finStart > tMin)) return
+    // 网格根部约三分之一藏在身后，主人看到的「整条尾巴」≈ 网格的 2/3，所以收 2/3 × 1/3
+    const cut = ((tMax - tMin) * 2) / 9
+    for (const v of verts) for (let k = 0; k < v.length; k += 2) {
+      const f = Math.min(1, Math.max(0, (proj(v, k) - tMin) / (finStart - tMin)))
+      v[k] -= dx * cut * f
+      v[k + 1] -= dy * cut * f
+    }
+  }
+
   /** 一次性动作：到点自己回到常驻待机（动作也是一次只能一个）。 */
   function playOneShot(group) {
     if (!manifest || !manifest.motions || !manifest.motions[group]) return
@@ -1609,6 +1672,13 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
 
     // rig 挂载点：model.update() 之前的最后一站
     internal.on('beforeModelUpdate', applyRig)
+
+    // 鲸鱼尾巴缩短：core 每帧算完顶点后再收一次（core 每帧都会重写顶点，不会越收越短）
+    const coreUpdate = coreModel.update.bind(coreModel)
+    coreModel.update = () => {
+      coreUpdate()
+      shortenTail()
+    }
 
     // 关掉框架自带的眨眼，改用我们自己的 blinkTick（节奏更像人）
     try {
@@ -2403,14 +2473,16 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     dock.append(talkBtn, menuBtn, hideBtn, openBtn)
 
     const composer = $('div', 'dshp-panel dshp-composer')
+    // 聊天记录：她在左、你在右；只放你说的话和她的最终回答（过程话、思考都不进来）
+    const chatLog = $('div', 'dshp-chat-log')
+    chatLog.appendChild($('div', 'dshp-hint dshp-chat-empty', '跟她说点什么吧～这个会话里的对话都会显示在这里。'))
     const ta = $('textarea')
     ta.placeholder = '跟 DSH 说点什么…（Enter 发送 / Shift+Enter 换行）'
     const crow = $('div', 'dshp-row')
     const sendBtn = $('button', 'dshp-btn dshp-primary', '发送')
     const cancelBtn = $('button', 'dshp-btn', '打断')
     crow.append($('span', 'dshp-grow'), cancelBtn, sendBtn)
-    const chint = $('div', 'dshp-hint', '发出去的话进入当前会话，回复会显示在气泡里。')
-    composer.append(ta, crow, chint)
+    composer.append(chatLog, ta, crow)
     addCloseButton(composer)
 
     const menu = $('div', 'dshp-panel dshp-menu')
@@ -2458,7 +2530,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       stage,
       tab,
       bubble: makeBubble(bubbleEl, body, foot, dot, headText),
-      composer: { el: composer, ta, send: sendBtn, cancel: cancelBtn },
+      composer: { el: composer, ta, send: sendBtn, cancel: cancelBtn, log: chatLog },
       menu: { el: menu, tabs, panes, focused: null },
       hud: {
         el: hud,
@@ -3672,8 +3744,8 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         const j = await r.json()
         if (!j.ok) throw new Error(j.error || '发送失败')
         ta.value = ''
-        closePanels()
-        act({ mood: 'listening', props: IDLE_PROPS, line: text, ms: 2600 })
+        ta.focus() // 聊天框不关：你的话会经事件流出现在右边，回答出现在左边
+        act({ mood: 'listening', props: IDLE_PROPS, ms: 2600 })
       } catch (err) {
         u.bubble.show('发不出去：' + err.message, { name: 'DS 鲸鱼娘', sticky: true })
       } finally {
@@ -3712,6 +3784,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       ['decor', '装饰'],
       ['scene', '场景'],
       ['action', '动作'],
+      ['task', '任务'],
       ['setting', '设置'],
     ]
     u.menu.focused = 'face'
@@ -3747,11 +3820,66 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     })
   }
 
+  // 定时任务页：只读展示 DSH 定时服务里的任务。创建靠对话里让 agent 用 schedule_create，
+  // 到点由 DSH 把任务内容投递回原会话执行；改 / 删在 DSH 自己的「自动化任务」页。
+  const TASK_KIND = { after: '延迟一次', at: '一次性', every: '固定间隔', daily: '每天', weekly: '每周', cron: 'Cron' }
+  const WEEKDAY = ['', '一', '二', '三', '四', '五', '六', '日']
+  const fmtWhen = (iso) =>
+    new Date(iso).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const fmtSecs = (n) => (n % 86400 === 0 ? n / 86400 + ' 天' : n % 3600 === 0 ? n / 3600 + ' 小时' : n % 60 === 0 ? n / 60 + ' 分钟' : n + ' 秒')
+  function taskRule(t) {
+    const tz = t.timeZone ? '（' + t.timeZone + '）' : ''
+    if (t.kind === 'after') return '创建后 ' + fmtSecs(t.afterSeconds)
+    if (t.kind === 'at') return fmtWhen(t.scheduledAt)
+    if (t.kind === 'every') return '每 ' + fmtSecs(t.everySeconds)
+    if (t.kind === 'daily') return '每天 ' + String(t.time).slice(0, 5) + tz
+    if (t.kind === 'weekly') return '每周' + (t.weekdays || []).map((d) => WEEKDAY[d]).join('、') + ' ' + String(t.time).slice(0, 5) + tz
+    if (t.kind === 'cron') return t.expression + tz
+    return t.kind
+  }
+
+  function renderTasks(panes) {
+    panes.appendChild(
+      $('div', 'dshp-hint', '跟她说「每天 9 点帮我……」，确认后任务出现在这里；到点由 DSH 自动执行。\n改 / 删去 DSH 的「自动化任务」页。'),
+    )
+    const box = $('div', null, '读取中…')
+    panes.appendChild(box)
+    fetch(BASE + '/tasks')
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) throw new Error(j.error || '读不到')
+        box.textContent = ''
+        if (!j.tasks.length) {
+          box.appendChild($('div', 'dshp-hint', '还没有定时任务。'))
+          return
+        }
+        for (const t of j.tasks) {
+          const card = $('div', 'dshp-task')
+          const ended = t.status !== 'active'
+          card.append(
+            $('div', 'dshp-task-title', t.title + '　·　' + (TASK_KIND[t.kind] || t.kind) + (ended ? '（已结束）' : '')),
+            $('div', null, '时间：' + taskRule(t)),
+            $('div', 'dshp-task-dim', ended ? '不再触发' : '下次：' + fmtWhen(t.scheduledAt)),
+            $('div', null, '内容：' + t.prompt),
+          )
+          if (t.lastDeliveredAt) card.appendChild($('div', 'dshp-task-dim', '上次执行：' + fmtWhen(t.lastDeliveredAt)))
+          box.appendChild(card)
+        }
+      })
+      .catch((err) => {
+        box.textContent = '读不到任务：' + err.message
+      })
+  }
+
   function renderPane(id) {
     const panes = ui.menu.panes
     panes.textContent = ''
     // 顶上永远有一行「她现在是什么状态」，免得一堆按钮里看不出哪个是开着的
     panes.appendChild($('div', 'dshp-hint dshp-now', menuStatusLine()))
+    if (id === 'task') {
+      renderTasks(panes)
+      return
+    }
     if (id === 'face') {
       const grid = $('div', 'dshp-grid')
       // 主人抱怨「星星眼重复了两次」——一个表情（参数组合）本来对应好几种情绪，
@@ -4035,6 +4163,69 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       for (const [val, b] of hostBtns) b.classList.toggle('dshp-primary', val === v)
     }
 
+    // 模型：列出 DSH 当前会话可选的模型，选了立刻切。
+    // 走 DSH 官方 session.selectModel（和 DSH 自己的模型选择器同一个口子），切换也会成为 DSH 的默认模型。
+    const modelHint = $('div', 'dshp-hint', '模型：读取中…')
+    const modelSel = $('select', 'dshp-btn dshp-model')
+    modelSel.disabled = true
+    fetch(BASE + '/models')
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) throw new Error(j.error || '读不到')
+        const cur = j.current || {}
+        let found = false
+        for (const g of j.groups) {
+          const og = document.createElement('optgroup')
+          og.label = g.name
+          for (const m of g.models) {
+            const o = $('option', null, m.name || m.id)
+            o.value = JSON.stringify([g.id, m.id])
+            if (m.description) o.title = m.description
+            if (g.id === cur.provider && m.id === cur.model) o.selected = found = true
+            og.appendChild(o)
+          }
+          modelSel.appendChild(og)
+        }
+        if (!found && cur.model) {
+          // 当前模型不在目录里（DSH 允许这种情况）：只显示，不当成可选项
+          const o = $('option', null, '当前：' + cur.model + '（不在列表里）')
+          o.value = ''
+          o.disabled = o.selected = true
+          modelSel.prepend(o)
+        }
+        modelSel.disabled = false
+        const failed = (j.failures || []).map((f) => f.name).join('、')
+        modelHint.textContent =
+          '模型（默认选中 DSH 当前的默认模型；切换作用于她正跟着的会话，并成为新的默认）' + (failed ? '\n读取失败：' + failed : '')
+      })
+      .catch((err) => {
+        modelHint.textContent = '模型：读不到（' + err.message + '）'
+      })
+    modelSel.addEventListener('change', async () => {
+      let pick
+      try {
+        pick = JSON.parse(modelSel.value)
+      } catch (err) {
+        return
+      }
+      const label = modelSel.selectedOptions[0] ? modelSel.selectedOptions[0].textContent : pick[1]
+      modelSel.disabled = true
+      try {
+        const r = await fetch(BASE + '/model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: pick[0], model: pick[1] }),
+        })
+        const j = await r.json()
+        if (!j.ok) throw new Error(j.error || '切换失败')
+        ui.bubble.show('好，下一句开始用 ' + label, { name: 'DS 鲸鱼娘', ttl: 2600 })
+        modelSel.disabled = false
+      } catch (err) {
+        ui.bubble.show('换不了模型：' + err.message, { name: 'DS 鲸鱼娘', sticky: true })
+        renderPane('setting') // 重新读一遍，下拉框回到真实的当前模型
+      }
+    })
+
     const row0 = $('div', 'dshp-row')
     const resetAll = $('button', 'dshp-btn dshp-primary', '一键重置所有状态')
     resetAll.addEventListener('click', () => {
@@ -4043,7 +4234,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       ui.bubble.show('回到平常状态啦', { name: 'DS 鲸鱼娘', ttl: 2200 })
     })
     row0.appendChild(resetAll)
-    box.append(hostRow, hostHint, themeRow, row0)
+    box.append(modelHint, modelSel, hostRow, hostHint, themeRow, row0)
 
     const row2 = $('div', 'dshp-row')
     const reset = $('button', 'dshp-btn', '回到角落')
@@ -4144,6 +4335,77 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     agent.sleeping = false
   }
 
+  /** 把回答里常见的 Markdown 排成 DOM：代码块 / 表格 / 标题 / 列表 / 段落，行内只认 `代码` 和 **粗体** */
+  function mdInline(parent, text) {
+    for (const part of String(text).split(/(`[^`]+`|\*\*[^*]+\*\*)/)) {
+      if (!part) continue
+      if (part.startsWith('`') && part.endsWith('`') && part.length > 1) parent.appendChild($('code', null, part.slice(1, -1)))
+      else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) parent.appendChild($('b', null, part.slice(2, -2)))
+      else parent.appendChild(document.createTextNode(part))
+    }
+  }
+  function mdToDom(text) {
+    const frag = document.createDocumentFragment()
+    const lines = String(text).replace(/\r/g, '').split('\n')
+    const isList = (l) => /^\s*([-*+]|\d+[.)])\s+/.test(l)
+    let i = 0
+    while (i < lines.length) {
+      const line = lines[i]
+      if (/^\s*```/.test(line)) {
+        const body = []
+        i++
+        while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++])
+        i++
+        const pre = $('pre')
+        pre.appendChild($('code', null, body.join('\n')))
+        frag.appendChild(pre)
+      } else if (/^\s*\|/.test(line)) {
+        const rows = []
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++].trim())
+        frag.appendChild($('pre', null, rows.filter((r) => !/^\|[\s:|-]+\|$/.test(r)).join('\n')))
+      } else if (/^#{1,6}\s/.test(line)) {
+        const h = $('div', 'dshp-msg-h')
+        mdInline(h, line.replace(/^#+\s*/, ''))
+        frag.appendChild(h)
+        i++
+      } else if (isList(line)) {
+        const list = $(/^\s*\d/.test(line) ? 'ol' : 'ul')
+        while (i < lines.length && isList(lines[i])) {
+          const li = $('li')
+          mdInline(li, lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ''))
+          list.appendChild(li)
+        }
+        frag.appendChild(list)
+      } else if (!line.trim()) {
+        i++
+      } else {
+        const para = []
+        while (i < lines.length && lines[i].trim() && !/^\s*(```|\||#{1,6}\s)/.test(lines[i]) && !isList(lines[i])) para.push(lines[i++])
+        const p = $('p')
+        para.forEach((l, k) => {
+          if (k) p.appendChild($('br'))
+          mdInline(p, l)
+        })
+        frag.appendChild(p)
+      }
+    }
+    return frag
+  }
+
+  const CHAT_MAX = 100
+  function chatAdd(who, text) {
+    const log = ui.composer.log
+    const empty = log.querySelector('.dshp-chat-empty')
+    if (empty) empty.remove()
+    const msg = $('div', 'dshp-msg ' + (who === 'me' ? 'dshp-msg-me' : 'dshp-msg-her'))
+    if (who === 'me') msg.textContent = text
+    else msg.appendChild(mdToDom(text))
+    log.appendChild(msg)
+    while (log.children.length > CHAT_MAX) log.firstChild.remove()
+    log.scrollTop = log.scrollHeight
+  }
+  const chatOpen = () => ui.composer.el.classList.contains('dshp-on')
+
   function handleEvent(m) {
     switch (m.t) {
       case 'hello':
@@ -4157,7 +4419,8 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         stopActing()
         setBase('listening', IDLE_PROPS)
         clearToolProp()
-        ui.bubble.show(String(m.text || '').slice(0, 300), { name: '你', ttl: 3500 })
+        if (m.text) chatAdd('me', String(m.text))
+        if (!chatOpen()) ui.bubble.show(String(m.text || '').slice(0, 300), { name: '你', ttl: 3500 })
         break
 
       case 'turn-start':
@@ -4187,25 +4450,32 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       case 'delta':
         if (m.kind === 'reasoning' && !CFG.showReasoning) return
         agent.lastActivity = Date.now()
+        // 逐字流只驱动「她在说话」的动画，不再把半截文字刷进气泡：
+        // 这里面混着每一步的过程话，最终回答等 assistant(final) 那条整段给
         if (!agent.hasStream) {
           agent.hasStream = true
           setStatus('speaking')
           rig.talking = true
           setBase('happy', WORK_PROPS)
-          ui.bubble.show('', { name: 'DS 鲸鱼娘', stream: true, sticky: true })
+          if (m.kind === 'reasoning') ui.bubble.show('', { name: 'DS 鲸鱼娘', stream: true, sticky: true })
+          else ui.bubble.note('正在写回答…')
         }
-        ui.bubble.show(m.text || '', { stream: true, sticky: true })
+        if (m.kind === 'reasoning') ui.bubble.show(m.text || '', { stream: true, sticky: true })
         break
 
       case 'assistant':
         agent.hasStream = false
         rig.talking = false
         if (m.interrupted) break
-        if (m.text) {
+        // 带工具调用的过程话（「我先查一下」）不当回答展示；老插件没有 final 字段时照旧当最终回答
+        if (m.text && m.final !== false) {
           setStatus('speaking')
           agent.lastText = m.text.slice(0, 4000)
-          ui.bubble.show(agent.lastText, { name: 'DS 鲸鱼娘', sticky: true })
-        if (agent.lastText && agent.lastText.length > 60) pushReport('任务简报', agent.lastText)
+          chatAdd('her', agent.lastText)
+          const preview = agent.lastText.length > 160 ? agent.lastText.slice(0, 160) + '…（完整内容在对话框）' : agent.lastText
+          // 回答气泡挂 1 分钟后自己关（work 让它不被戳一下之类的互动气泡顶掉）
+          if (!chatOpen()) ui.bubble.show(preview, { name: 'DS 鲸鱼娘', work: true, ttl: 60000 })
+          if (agent.lastText.length > 60) pushReport('任务简报', agent.lastText)
         }
         if (m.usage) {
           const t = (m.usage.input || 0) + (m.usage.cache || 0) + (m.usage.output || 0)
@@ -4330,7 +4600,8 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
           })
           if (keepText) {
             if (stat.length) ui.bubble.note(stat.join(' · '))
-            setTimeout(() => {
+            // 气泡里是回答时不再用结束台词顶掉，让它挂满 1 分钟；聊天框开着时气泡里不是回答，照旧接台词
+            if (chatOpen()) setTimeout(() => {
               if (agent.status !== 'idle') return
               ui.bubble.show(pickFresh(SAY.done, 'done'), { name: 'DS 鲸鱼娘', ttl: 4200 })
             }, 2800)

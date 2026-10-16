@@ -17,16 +17,11 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { exec } = require('node:child_process')
+const { createHmac, randomBytes } = require('node:crypto')
 
 // 宿主地址在启动时「发现」出来，不再写死 —— 与 macOS 版保持一致：
-// 官方桌面版（Electron，端口由宿主决定，实测 19387）和手动起的 `dsh web`（3080）都要能连上。
-const CANDIDATE_BASES = [
-  'http://127.0.0.1:19387',
-  'http://127.0.0.1:3080',
-  'http://127.0.0.1:8080',
-  'http://127.0.0.1:3000',
-]
-let petBase = CANDIDATE_BASES[0]
+// 只试插件写进通行证文件的端口 + 约束文件 desktop.allowedPorts（见 discoverHost）。
+let petBase = 'http://127.0.0.1:19387'
 
 // 连接档位：auto（默认）/ desktop（官方桌面版）/ web（dsh web）
 // 主人反馈：她有时连网页版、有时连桌面版 → 会「串对话」，所以要能钉住并记住。
@@ -69,6 +64,41 @@ const WIN_W = 560
 const WIN_H = 900   // 只加高：给她头顶留出聊天框的位置
 const BALL = 62
 const TOKEN_FILE = path.join(os.homedir(), '.dsh', 'dsh-live2d-pet-desktop.json')
+const POLICY_FILE = path.join(os.homedir(), '.dsh', 'dsh-live2d-pet.policy.json')
+
+/** 约束文件（插件启动时生成，插件 / 两个壳共用一份）。没有、写坏、或 desktop.enabled 不是 true → 不连任何宿主 */
+function readPolicy() {
+  try {
+    const d = JSON.parse(fs.readFileSync(POLICY_FILE, 'utf8')).desktop || {}
+    if (d.enabled !== true) return { enabled: false, ports: [] }
+    const ports = Array.isArray(d.allowedPorts)
+      ? d.allowedPorts.filter((n) => Number.isInteger(n) && n > 0 && n < 65536)
+      : []
+    return { enabled: true, ports }
+  } catch (e) {
+    return { enabled: false, ports: [] }
+  }
+}
+
+/**
+ * 握手：候选宿主先证明自己知道通行证 —— 回 HMAC(通行证, nonce:端口) —— 通过了才把通行证交出去。
+ * 证明绑定了我们连的端口，别的进程把 nonce 转给真插件也冒充不了。
+ * （主进程的全局 fetch 是 Node 的，不带浏览器会话里的 cookie。）
+ */
+async function verifyHost(port, token) {
+  const nonce = randomBytes(16).toString('hex')
+  try {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), 1800)
+    const res = await fetch('http://127.0.0.1:' + port + '/dsh-pet/hello?n=' + nonce, { signal: ctl.signal })
+    clearTimeout(timer)
+    if (res.status !== 200) return false
+    const { proof } = await res.json()
+    return proof === createHmac('sha256', token).update(nonce + ':' + port).digest('hex')
+  } catch (e) {
+    return false
+  }
+}
 
 let win = null
 let ballWin = null
@@ -330,9 +360,10 @@ function createMain() {
 }
 
 /**
- * 发现正在运行的 DSH 宿主：官方桌面版（19387）或 `dsh web`（3080）。
- * 带通行证探 /dsh-pet/pet.js：200 = 就是它；401 = 插件在但票不对（也先进去）。
- * 以前写死 3080，导致只开官方桌面版的用户连不上。
+ * 发现正在运行的 DSH 宿主（官方桌面版或 `dsh web`）。
+ * 候选 = 插件写进通行证文件的端口 + 约束文件 desktop.allowedPorts；不再扫描本机所有监听端口
+ * （以前会把通行证发给每一个在监听的进程）。先握手，通过了才带通行证探 /dsh-pet/pet.js：
+ * 200 = 就是它；401 = 插件在但票不对（也先进去）。
  */
 async function discoverHost(token) {
   // 关键：**不靠端口号判断类型**（3080/19387 只是本机端口，别人可能完全不同）。
@@ -340,19 +371,23 @@ async function discoverHost(token) {
   //   跑在 Electron 里（官方桌面版）→ "desktop":true
   //   普通 Node（dsh web）         → "desktop":false
   const pref = hostPref()
-  const scanned = await scanListeningPorts()
+  const policy = readPolicy()
+  if (!policy.enabled) {
+    bootLog('约束文件不允许桌面壳连接（缺失 / 写坏 / desktop.enabled 不是 true）: ' + POLICY_FILE)
+    return null
+  }
   const ordered = []
   const p = deskPort()
   if (p) ordered.push(p)
-  for (const n of scanned) if (!ordered.includes(n)) ordered.push(n)
-  for (const base of CANDIDATE_BASES) {
-    const n = Number(base.split(':').pop())
-    if (!ordered.includes(n)) ordered.push(n)
-  }
+  for (const n of policy.ports) if (!ordered.includes(n)) ordered.push(n)
   const okList = []
   let fallback = null
   for (const n of ordered) {
     const base = 'http://127.0.0.1:' + n
+    if (!(await verifyHost(n, token))) {
+      bootLog('候选宿主没通过握手（不是本插件，或插件版本太旧），不交通行证: ' + base)
+      continue
+    }
     try {
       const ctl = new AbortController()
       const timer = setTimeout(() => ctl.abort(), 1800)
@@ -439,31 +474,6 @@ function scanPortOwners() {
   })
 }
 
-function scanListeningPorts() {
-  return new Promise((resolve) => {
-    try {
-      exec('netstat -ano -p tcp', { timeout: 5000, windowsHide: true }, (err, stdout) => {
-        if (err || !stdout) return resolve([])
-        const ports = []
-        for (const line of String(stdout).split('\n')) {
-          if (!/LISTENING/i.test(line)) continue
-          const m = line.match(/(?:127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|\[::\]):(\d{2,5})/)
-          if (m) {
-            const n = Number(m[1])
-            if (n > 1023 && n < 65536) ports.push(n)
-          }
-        }
-        // 去重 + 常见开发端口排前面（纯优化顺序，不影响正确性）
-        const uniq = [...new Set(ports)]
-        uniq.sort((a, b) => (a === 19387 || a === 3080 ? -1 : 0) - (b === 19387 || b === 3080 ? -1 : 0))
-        resolve(uniq.slice(0, 60))
-      })
-    } catch (e) {
-      resolve([])
-    }
-  })
-}
-
 function readPos() {
   try {
     const j = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'pos.json'), 'utf8'))
@@ -500,6 +510,7 @@ function savePos() {
 function showHint(installed) {
   if (!win || win.isDestroyed()) return
   const token = readToken()
+  const policyOk = readPolicy().enabled
   const html = `<!doctype html><meta charset="utf-8"><style>
   html,body{margin:0;height:100%;background:transparent}
   body{display:flex;align-items:center;justify-content:center;font:13px/1.7 "Microsoft YaHei",-apple-system,sans-serif;color:#fff;text-align:center}
@@ -511,7 +522,7 @@ function showHint(installed) {
   code{background:rgba(127,150,255,.18);padding:2px 6px;border-radius:6px}
   </style><body><div class="box">
   <div class="t">🐋 正在找 DSH…</div>
-  <div class="s">${token ? '通行证已就位，但连不上 <code>${petBase}</code>。<br>请确认 ① 装了插件 ② DSH 正在运行。' : '还没读到通行证 <code>~/.dsh/dsh-live2d-pet-desktop.json</code>。<br>请先在 DSH 里装插件，然后重启 DSH。'}</div>
+  <div class="s">${!policyOk ? '约束文件 <code>~/.dsh/dsh-live2d-pet.policy.json</code> 没有允许桌面壳连接（desktop.enabled）。' : token ? '通行证已就位，但连不上 <code>${petBase}</code>。<br>请确认 ① 装了插件 ② DSH 正在运行。' : '还没读到通行证 <code>~/.dsh/dsh-live2d-pet-desktop.json</code>。<br>请先在 DSH 里装插件，然后重启 DSH。'}</div>
   <button onclick="window.dshpet.install()">一键安装插件</button>
   <button onclick="window.dshpet.reload()">重新连接</button>
   </div>

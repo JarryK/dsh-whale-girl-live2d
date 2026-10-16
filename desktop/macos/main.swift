@@ -13,6 +13,7 @@
 //
 // 编译见 tools/build-desktop-mac.sh；本文件不依赖任何第三方库。
 import Cocoa
+import CryptoKit
 import WebKit
 
 /// 宿主地址在启动时「发现」出来，不再写死 ——
@@ -88,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var downAt = NSPoint.zero   // 按下时的鼠标位置（屏幕坐标）
     var winAt = NSPoint.zero    // 按下时的窗口位置
     var moved: CGFloat = 0      // 这次按下总共挪了多少像素
+    var downHitKnown = true     // 按下处「是面板控件还是她」已经问出结果了没有
     var shellDrag = false       // 已经判定为「拖窗口」而不是「点她」
 
     // MARK: - 启动
@@ -302,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // 否则会用 90ms 前的旧结果：鼠标刚扫过菜单就会判成「面板」，
             // 于是这次拖动被交给网页，只能在窗口范围内挪 → 主人感觉「有边界拖不动」。
             overPanel = false
+            probeDown()
             updateHit()
             refreshGeo()        // 点一下就刷一次几何：切页签/展开后缓存立刻跟上，避免下一次点不中
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
@@ -331,6 +334,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // 只在鼠标下面是真控件（滑块/按钮/输入框）时才留给网页，
             // 其余情况一律拖窗口 —— 这样整个屏幕都能拖。
             if overPanel { return e }
+            // 按下处还没问出结果就先不拖：否则手快时窗口已经被拖走，结果才回来说「这是文字区」
+            if !downHitKnown { return nil }
             let m = NSEvent.mouseLocation
             let dx = m.x - downAt.x, dy = m.y - downAt.y
             moved = max(moved, abs(dx) + abs(dy))
@@ -384,7 +389,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // 只有面板里真正的控件（滑块/按钮/输入框）才把拖动让给网页；
         // 面板的空白处按「她」处理 —— 否则点她头顶附近会判成面板，
         // 壳子就放弃拖窗口，于是只能在页面视口里挪（主人报的「拖不到屏幕上半部分」）。
-        var ctl = el.closest && el.closest('input,textarea,button,select,a,[contenteditable],.dshp-dock');
+        // 聊天记录、工作简报的正文也算「控件」：在里面按住拖 = 选文字复制，不是拖她
+        var ctl = el.closest && el.closest('input,textarea,button,select,a,[contenteditable],.dshp-dock,.dshp-chat-log,.dshp-report-body');
         return ctl ? 'panel' : 'model';
       }
       if (window.DSHPet && DSHPet.hitTest && DSHPet.hitTest(x,y)) return 'model';
@@ -471,6 +477,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
+    /// 按下那一刻单独问一次网页：鼠标下面是不是面板里的控件 / 文字区。
+    /// updateHit 可能走本地快速判定、不问网页，所以不能指望它来定这次拖动归谁。
+    func probeDown() {
+        let m = NSEvent.mouseLocation
+        let f = win.frame
+        guard f.contains(m) else { return }
+        downHitKnown = false
+        let js = hitJS.replacingOccurrences(of: "__X__", with: String(format: "%.1f", m.x - f.minX))
+                       .replacingOccurrences(of: "__Y__", with: String(format: "%.1f", f.height - (m.y - f.minY)))
+        web.evaluateJavaScript(js) { [weak self] v, _ in
+            guard let self else { return }
+            // 这次按下归网页（选文字/拖滑块）：整个手势期间冻结探针，鼠标拖出文字区也不改判成「拖她」
+            if (v as? String) == "panel" { self.overPanel = true; self.panelGesture = true }
+            self.downHitKnown = true
+        }
+        // 网页卡住也别把拖动永远锁住
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.downHitKnown = true }
+    }
+
     func setInside(_ v: Bool) {
         if v == inside { return }
         inside = v
@@ -484,7 +509,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: - 加载与位置
 
-    /// 候选宿主：① 正在监听的「像 DSH 的」进程（官方桌面版 / dsh web）② 常见端口兜底
     /// 通行证文件里记录的宿主端口（插件写进去的，因机器而异 —— 不能写死）
     func deskPort() -> Int? {
         let p = NSHomeDirectory() + "/.dsh/dsh-live2d-pet-desktop.json"
@@ -505,42 +529,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         UserDefaults.standard.synchronize()
     }
 
-    /// 候选宿主列表：**不靠端口号判断类型**（3080/19387 只是本机端口，别人可能完全不同）。
-    /// 这里只负责「有哪些可能」，是网页版还是桌面版由 probeHost() 读宿主自己发出的
-    /// 启动配置标记（desktop:true/false）来判定。
-    /// 端口 → 属主进程名（lsof 的第一列）。用来判断这个宿主是官方桌面版还是 dsh web ——
-    /// **通用判据，不看端口号**：桌面版宿主跑在 "DeepSeek Harness" 里，网页版是 node/dsh。
-    var portOwners: [Int: String] = [:]
+    /// 约束文件（插件启动时生成，插件 / 两个壳共用一份）。
+    /// 没有、写坏、或 desktop.enabled 不是 true → 按最严处理：不连任何宿主。
+    func readPolicy() -> (enabled: Bool, ports: [Int]) {
+        let p = NSHomeDirectory() + "/.dsh/dsh-live2d-pet.policy.json"
+        guard let d = FileManager.default.contents(atPath: p),
+              let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+              let desk = o["desktop"] as? [String: Any],
+              (desk["enabled"] as? Bool) == true
+        else { return (false, []) }
+        let ports = (desk["allowedPorts"] as? [Any] ?? []).compactMap { $0 as? Int }.filter { $0 > 0 && $0 < 65536 }
+        return (true, ports)
+    }
 
+    /// 候选宿主列表：插件写进通行证文件的端口 + 约束文件 desktop.allowedPorts。
+    /// 不再扫描本机所有监听端口（以前会把通行证发给每一个在监听的进程）。
+    /// 是网页版还是桌面版由 probeHost() 读宿主自己发出的启动配置标记（desktop:true/false）来判定。
     func candidateBases() -> [String] {
         var ports: [Int] = []
-        // ① 插件写下的真实端口（谁先开就写谁，所以「打开哪个都能连」）
         if let n = deskPort() { ports.append(n) }
-        // ② 扫描本机所有监听端口（端口没监听时连接会被立刻拒绝，所以逐个探活很快）
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        p.arguments = ["-nP", "-iTCP", "-sTCP:LISTEN"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        if (try? p.run()) != nil {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            p.waitUntilExit()
-            for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
-                let l = String(line)
-                guard l.contains("127.0.0.1:") || l.contains("*:") || l.contains("[::1]:") else { continue }
-                if let r = l.range(of: #":(\d{2,5})\s*$"#, options: .regularExpression),
-                   let port = Int(l[r].dropFirst().trimmingCharacters(in: .whitespaces)), port > 1023, port < 65536 {
-                    ports.append(port)
-                    let owner = l.split(separator: " ").first.map(String.init) ?? ""
-                    if !owner.isEmpty { portOwners[port] = owner }
-                }
-            }
-        }
-        // ③ 兜底：万一上面都没找到（例如异常环境），至少试这几个常见端口
-        ports += [19387, 3080, 8080, 3000]
+        ports += readPolicy().ports
         var seen = Set<Int>()
         return ports.filter { seen.insert($0).inserted }.map { "http://127.0.0.1:\($0)" }
+    }
+
+    /// 握手：候选宿主先证明自己知道通行证 —— 回 HMAC(通行证, nonce:端口) —— 通过了才把通行证交出去。
+    /// 证明绑定了我们连的端口，别的进程把 nonce 转给真插件也冒充不了。
+    func verifyHost(_ base: String, token: String) -> Bool {
+        guard let port = Int(base.split(separator: ":").last ?? "") else { return false }
+        let nonce = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: .min ... .max)) }.joined()
+        guard let u = URL(string: base + "/dsh-pet/hello?n=" + nonce) else { return false }
+        var req = URLRequest(url: u)
+        req.timeoutInterval = 1.8
+        req.httpShouldHandleCookies = false     // 握手阶段一个 cookie 都不带
+        let sem = DispatchSemaphore(value: 0)
+        var proof = ""
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            if (resp as? HTTPURLResponse)?.statusCode == 200, let d = data,
+               let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
+                proof = (o["proof"] as? String) ?? ""
+            }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 3.0)
+        let mac = HMAC<SHA256>.authenticationCode(for: Data("\(nonce):\(port)".utf8),
+                                                  using: SymmetricKey(data: Data(token.utf8)))
+        return !proof.isEmpty && proof == mac.map { String(format: "%02x", $0) }.joined()
     }
 
     /// 探一下某个宿主：200 = 就是它且票有效；401 = 插件在但票不对；其它 = 不是它
@@ -604,23 +638,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             retry(after: 5)
             return
         }
+        guard readPolicy().enabled else {
+            log("约束文件 ~/.dsh/dsh-live2d-pet.policy.json 不允许桌面壳连接（缺失 / 写坏 / desktop.enabled 不是 true）—— 5 秒后重试")
+            showHint("约束文件 ~/.dsh/dsh-live2d-pet.policy.json 没有允许桌面壳连接（desktop.enabled）。")
+            retry(after: 5)
+            return
+        }
         DispatchQueue.global().async { [weak self] in
             guard let self else { return }
             let pref = self.hostPref()
             var okList: [(base: String, desktop: Bool?, score: Int, ver: String)] = []
             var fallback: String?
             for base in self.candidateBases() {
+                guard self.verifyHost(base, token: token) else {
+                    self.log("候选宿主没通过握手（不是本插件，或插件版本太旧），不交通行证: \(base)")
+                    continue
+                }
                 let r = self.probeHost(base, token: token)
                 if r.code == 200 {
-                    // 类型判定：① 插件自报（desktop:true/false，最准）
-                    //           ② 端口属主进程名（老插件也有这个信号，同样与端口号无关）
-                    var kind = r.desktop
-                    if kind == nil, let port = Int(base.split(separator: ":").last ?? "") {
-                        let owner = self.portOwners[port] ?? ""
-                        self.log("调试：属主表 \(self.portOwners) → 端口 \(port) 属主=\(owner.isEmpty ? "空" : owner)")
-                        if owner.contains("DeepSeek") { kind = true }
-                        else if owner.contains("node") || owner.contains("dsh") { kind = false }
-                    }
+                    // 类型判定：插件自报（desktop:true/false）
+                    let kind = r.desktop
                     let score = self.activityOf(base, token: token)
                     okList.append((base, kind, score, r.version))
                     self.log("候选宿主可用: \(base) 类型=\(kind == true ? "桌面版" : kind == false ? "网页版" : "未知") 前端版本=\(r.version.isEmpty ? "未知" : r.version) 活跃度=\(score)")
@@ -650,7 +687,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     self.log("找到宿主（票可能过期，先进去看）: \(fb)")
                     self.start(base: fb, token: token)
                 } else {
-                    self.showHint("没找到正在运行的 DSH —— 官方桌面版和 `dsh web` 都试过了。请先打开其中一个。")
+                    self.showHint("没找到正在运行的 DSH —— 只试了插件记录的端口和约束文件 allowedPorts 里的端口。请先打开 DSH；同时开着桌面版和 dsh web 时，把另一个的端口加进 allowedPorts。")
                     self.retry(after: 5)
                 }
             }

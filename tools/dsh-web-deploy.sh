@@ -2,12 +2,18 @@
 # DSH 网页版 · 一行命令部署
 # ————————————————————————————————————————————————————————————
 # 为什么写这个：DSH 的网页版要自己装 Node、装 CLI、起服务、再装插件，很多人不会。
-# 这个脚本把这几步合成一条命令：
+# 这个脚本把这几步合成一条命令（先下载整个仓库的固定版本，在仓库里运行）：
 #
-#   curl -fsSL https://raw.githubusercontent.com/Andersen216/dsh-whale-girl-live2d/main/tools/dsh-web-deploy.sh | bash
+#   bash tools/dsh-web-deploy.sh
 #
 # 想要「连桌宠插件一起装好」：
-#   ... | bash -s -- --with-pet
+#   bash tools/dsh-web-deploy.sh --with-pet
+#
+# 版本锁：DSH 版本和桌宠插件来源都写在同目录的 deploy.lock.json，不再用 @latest / main 分支。
+#   dsh    —— 确切版本号（npm exec 免安装运行时用它）
+#   plugin —— local（把这份仓库打成 tgz 再装，装的就是你手上这份代码）
+#             或 git 地址#完整 commit、或 包名@确切版本
+# 不支持 curl | bash：那样跑的是远端当时的内容，没法核对。
 #
 # 子命令：--doctor（只体检不起服务）｜stop（停止）｜status（看状态）
 #
@@ -20,7 +26,6 @@ set -Eeuo pipefail
 
 REPO="Andersen216/dsh-whale-girl-live2d"
 ISSUE_URL="https://github.com/$REPO/issues"
-PET_PLUGIN="github:$REPO"
 STATE="$HOME/.dsh/.web-deploy.json"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 WITH_PET=0
@@ -33,7 +38,7 @@ for a in "$@"; do
     --doctor)   ACTION="doctor" ;;
     stop)       ACTION="stop" ;;
     status)     ACTION="status" ;;
-    -h|--help)  sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '2,24p' "$0"; exit 0 ;;
   esac
 done
 
@@ -77,6 +82,23 @@ say "  ✓ Node $(node -v)"
 if ! command -v npm >/dev/null 2>&1; then die "没找到 npm（通常随 Node 一起装）。" "重装 Node LTS" 10; fi
 say "  ✓ npm $(npm -v)"
 
+# 版本锁（见文件头）：读不到 / 没锁死就不往下走
+SRC="${BASH_SOURCE[0]:-}"
+[ -n "$SRC" ] && [ -f "$SRC" ] || die "不支持 curl | bash。" "下载整个仓库（固定版本）后在仓库里运行：bash tools/dsh-web-deploy.sh" 11
+SCRIPT_DIR="$(cd "$(dirname "$SRC")" && pwd)"
+LOCK="$SCRIPT_DIR/deploy.lock.json"
+[ -f "$LOCK" ] || die "没找到版本锁 ${LOCK}。" "下载整个仓库后在仓库里运行" 11
+lock_get() { node -p 'String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))[process.argv[2]] || "")' "$LOCK" "$1" 2>/dev/null || true; }
+DSH_VERSION="$(lock_get dsh)"
+PET_PLUGIN="$(lock_get plugin)"
+[[ "$DSH_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+  || die "版本锁里的 dsh 不是确切版本号：'$DSH_VERSION'" "改成形如 0.2.0-rc.2 的版本" 11
+if [ "$PET_PLUGIN" != "local" ] && ! [[ "$PET_PLUGIN" =~ \#[0-9a-f]{40}$ ]] \
+  && ! [[ "$PET_PLUGIN" =~ ^(@[a-z0-9._-]+/)?[a-z0-9._-]+@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  die "版本锁里的 plugin 没锁到具体版本：'$PET_PLUGIN'" "用 local、git 地址#完整 40 位 commit、或 包名@确切版本" 11
+fi
+say "  ✓ 版本锁：dsh $DSH_VERSION · 插件 $PET_PLUGIN"
+
 # npm 缓存权限（实测会踩：root 拥有的 _cacache 会让一切 npm 命令 EACCES）
 CACHE_OK=1
 if [ -d "$HOME/.npm/_cacache" ] && [ ! -w "$HOME/.npm/_cacache" ]; then CACHE_OK=0; fi
@@ -89,11 +111,13 @@ else
 fi
 
 if command -v dsh >/dev/null 2>&1; then
-  say "  ✓ 已有 dsh $(dsh -V 2>/dev/null || echo '?')（会复用它）"
+  HAVE_DSH="$(dsh -V 2>/dev/null || echo '?')"
+  say "  ✓ 已有 dsh ${HAVE_DSH}（会复用它）"
+  [ "$HAVE_DSH" = "$DSH_VERSION" ] || say "  ⚠️  和版本锁（${DSH_VERSION}）不一致 —— 复用的是你已装的版本"
   RUN=(dsh)
 else
-  say "  ℹ️  未装 dsh —— 用 npm exec 免安装运行（首次约 60MB，走 registry.npmmirror.com 更快）"
-  RUN=(npm exec --yes --registry=https://registry.npmmirror.com --package=@deepseek-ai/dsh@latest -- dsh)
+  say "  ℹ️  未装 dsh —— 用 npm exec 免安装运行 dsh@${DSH_VERSION}（首次约 60MB，走 registry.npmmirror.com 更快）"
+  RUN=(npm exec --yes --registry=https://registry.npmmirror.com "--package=@deepseek-ai/dsh@$DSH_VERSION" -- dsh)
 fi
 
 if [ "${DEEPSEEK_API_KEY:-}" = "" ] && [ ! -f "$DSH_HOME/.credentials.yaml" ] && [ ! -f "$DSH_HOME/.env" ] && [ ! -f "./.env" ]; then
@@ -148,14 +172,19 @@ printf '{"pid":%s,"port":"%s","started_at":"%s"}\n' "$PID" "$REAL_PORT" "$(date 
 if [ "$WITH_PET" = 1 ]; then
   if command -v pnpm >/dev/null 2>&1; then
     say "  正在安装桌宠插件…"
-    if "${RUN[@]}" plugin --profile web add "$PET_PLUGIN" >>"$LOG" 2>&1; then
+    SPEC="$PET_PLUGIN"
+    if [ "$PET_PLUGIN" = "local" ]; then
+      # 打成 tgz 放进 DSH_HOME 再装：是一份快照，之后改仓库不会影响已装的插件
+      TGZ="$(npm pack "$SCRIPT_DIR/.." --pack-destination "$DSH_HOME" --silent 2>>"$LOG" | tail -1 || true)"
+      SPEC="${TGZ:+$DSH_HOME/$TGZ}"
+    fi
+    if [ -n "$SPEC" ] && "${RUN[@]}" plugin --profile web add "$SPEC" >>"$LOG" 2>&1; then
       say "  ✓ 桌宠插件已装（下一步：刷新页面她就在右下角）"
     else
-      say "  ⚠️  插件没装上，稍后可以手动：dsh plugin --profile web add $PET_PLUGIN"
+      say "  ⚠️  插件没装上，稍后可以手动：dsh plugin --profile web add $SPEC"
     fi
   else
-    say "  ⚠️  没装 pnpm，跳过插件安装。装好 pnpm 后执行："
-    say "     npm i -g pnpm && dsh plugin --profile web add $PET_PLUGIN"
+    say "  ⚠️  没装 pnpm，跳过插件安装。装好 pnpm 后重新运行：bash $0 --with-pet"
   fi
 fi
 

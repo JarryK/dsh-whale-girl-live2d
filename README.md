@@ -3,20 +3,32 @@
 
 ## 🚀 网页版一键部署（不用懂命令行）
 
-DSH 网页版原来要自己装 Node、装 CLI、起服务、再装插件 —— 现在一条命令搞定：
+DSH 网页版原来要自己装 Node、装 CLI、起服务、再装插件 —— 现在下载仓库后一条命令搞定。
+先下载**整个仓库的固定版本**（`git clone` 后 checkout 到某个 tag / commit，或下载 Release 的源码包），
+看过没问题再在仓库目录里运行：
 
 ```bash
 # macOS / Linux / WSL：起网页版（自动挑空闲端口、自动打开浏览器）
-curl -fsSL https://raw.githubusercontent.com/Andersen216/dsh-whale-girl-live2d/main/tools/dsh-web-deploy.sh | bash
+bash tools/dsh-web-deploy.sh
 
 # 想连桌宠插件一起装好
-curl -fsSL https://raw.githubusercontent.com/Andersen216/dsh-whale-girl-live2d/main/tools/dsh-web-deploy.sh | bash -s -- --with-pet
+bash tools/dsh-web-deploy.sh --with-pet
 ```
 
-Windows：下载仓库里的 `tools/dsh-web-deploy.cmd` **双击运行**（内部走 PowerShell，
+Windows：在仓库目录里**双击** `tools/dsh-web-deploy.cmd`（内部走 PowerShell，
 已绕开执行策略；⚠️ 作者没有 Windows 机器，这版**尚未真机验证**）。
 
-**它做了什么**：检查 Node（≥20）→ 复用已装的 dsh（没有就用 `npm exec` 免安装跑）→
+**版本锁**：要装的 DSH 版本和桌宠插件来源写在 `tools/deploy.lock.json`，脚本不会再用 `@latest` 或 `main` 分支：
+
+```json
+{ "dsh": "0.2.0-rc.2", "plugin": "local" }
+```
+
+`dsh` 必须是确切版本号；`plugin` 只认 `local`（把你手上这份仓库打成 tgz 放进 `~/.dsh` 再装）、
+`git 地址#完整 40 位 commit`、`包名@确切版本` 三种，写别的脚本直接退出。
+不再支持 `curl … | bash`：那样执行的是远端当时的内容，没法核对。
+
+**它做了什么**：检查 Node（≥20）→ 读版本锁 → 复用已装的 dsh（没有就用 `npm exec` 免安装跑锁定的版本）→
 用官方支持的 `--port 0` 让系统挑空闲端口 → 抓出带登录 token 的地址 → 自动开浏览器 →
 （可选）装桌宠插件。
 
@@ -464,6 +476,39 @@ Diagnostics page: `http://127.0.0.1:3080/dsh-pet/diag`.
 > **English**: defaults live in `DEFAULT_CONFIG` in `lib/index.js`; override them in
 > `~/.dsh/dsh-live2d-pet.json` (the filename intentionally keeps the old name). Changing `enabled` requires
 > a DSH restart.
+
+### 🔒 约束文件 / Policy
+
+能不能「动会话」、桌面壳能不能连、能连哪些端口，写在单独的 **`~/.dsh/dsh-live2d-pet.policy.json`**，
+插件、macOS 壳、Windows 壳读的是同一份。插件第一次启动时会写一份默认的（和以前行为一致）：
+
+```json
+{
+  "routes": { "say": true, "cancel": true, "control": true, "model": true },
+  "desktop": { "enabled": true, "allowedPorts": [] }
+}
+```
+
+| 字段 | 作用 |
+|---|---|
+| `routes.say` | 桌宠输入框把话送进会话（等于驱动 agent）。关掉后 `/dsh-pet/say` 一律 403 |
+| `routes.cancel` | 「打断」按钮（`/dsh-pet/cancel`） |
+| `routes.control` | agent / 脚本让她换表情、说话、推简报（`/dsh-pet/control`） |
+| `routes.model` | 设置页里切换模型（`/dsh-pet/model`，走 DSH 官方 `selectModel`；**切换也会成为 DSH 的默认模型**）。列出模型不受它限制 |
+| `desktop.enabled` | 桌面壳通行证是否有效。关掉后两个壳都不连、插件也不认通行证 |
+| `desktop.allowedPorts` | 除了插件自己记下的端口，桌面壳还可以连哪些端口。同时开着官方桌面版和 `dsh web` 时，把另一个的端口写进来 |
+
+- **每次请求都现读**，改完不用重启 DSH；壳子在下次「重新加载」时生效。
+- **写坏 / 缺字段 / 类型不对 → 那一项按最严处理（关 / 空）**。删掉文件 → 下次启动 DSH 时重新生成默认的。
+- 桌面壳只会去连「插件记下的端口 + `allowedPorts`」，并且先握手：对方要回 `HMAC(通行证, nonce:端口)`
+  证明自己是本插件，通过了才把通行证交出去。别的进程（哪怕把 nonce 转发给真插件）拿不到通行证。
+- 与约束文件无关、始终生效：DSH 的信任栅栏（`connection.requestRejection`）缺失或出错时，
+  插件路由一律拒绝（只有带通行证的桌面壳能进），不再默认放行。
+
+> **English**: `~/.dsh/dsh-live2d-pet.policy.json` gates the session-driving routes (`say` / `cancel` / `control`),
+> whether the desktop shells may connect, and which extra ports they may try. It is created with permissive
+> defaults on first start; a malformed file or a missing field is treated as "off". Desktop shells only hand
+> their token to a host that first proves knowledge of it via an HMAC bound to the nonce and port.
 
 ---
 

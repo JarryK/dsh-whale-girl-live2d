@@ -14,11 +14,18 @@
 
 import http from 'node:http'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { createHmac } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
+
+// 插件会往 DSH_HOME 写通行证 / 约束文件：测试用临时目录，别动真机上的 ~/.dsh
+process.env.DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-pet-test-'))
+const POLICY_FILE = path.join(process.env.DSH_HOME, 'dsh-live2d-pet.policy.json')
+const DESKTOP_FILE = path.join(process.env.DSH_HOME, 'dsh-live2d-pet-desktop.json')
 
 let pass = 0
 let fail = 0
@@ -44,9 +51,13 @@ const effects = []
 
 let fenceCalls = 0
 let fenceVerdict = undefined // undefined = 放行
+let fenceMode = 'ok' // 'missing' = 宿主没有 connection 服务；'throw' = 判定时抛异常
 
 const prompts = []
 const promptSignals = []
+const modelSelects = []
+let modelNow = { provider: 'deepseek', model: 'flash' }
+let scheduleOn = true
 const cancels = []
 
 const mockCtx = {
@@ -86,10 +97,24 @@ const mockCtx = {
   },
   get(name) {
     if (name === 'connection') {
+      if (fenceMode === 'missing') return undefined
       return {
         requestRejection() {
           fenceCalls++
+          if (fenceMode === 'throw') throw new Error('fence boom')
           return fenceVerdict
+        },
+      }
+    }
+    if (name === "schedule") {
+      if (!scheduleOn) return undefined
+      // 形状照抄 DSH 0.2 dsh-schedule 的 catalog()：记录 + sessionId / status / lastDelivery
+      return {
+        async catalog() {
+          return [
+            { id: "t1", kind: "daily", title: "早报", prompt: "总结昨天的邮件", time: "09:00:00", timeZone: "Asia/Shanghai", scheduledAt: "2026-10-15T01:00:00.000Z", sessionId: "sess-1", status: "active", lastDelivery: { scheduledAt: "2026-10-14T01:00:00.000Z", deliveredAt: "2026-10-14T01:00:02.000Z", messageId: "m1" } },
+            { id: "t2", kind: "at", title: "提醒开会", prompt: "提醒我 3 点开会", scheduledAt: "2026-10-14T07:00:00.000Z", sessionId: "sess-2", status: "inactive" },
+          ]
         },
       }
     }
@@ -105,6 +130,21 @@ const mockCtx = {
         },
         async create() {
           return { sessionId: 'sess-auto' }
+        },
+        // DSH 0.2 的模型目录 / 切换（形状照抄 dsh-api-session-controller）
+        async modelCatalog() {
+          return {
+            default: modelNow,
+            routableProviders: ["deepseek"],
+            groups: [{ id: "deepseek", name: "DeepSeek", models: [{ id: "flash", name: "Flash" }, { id: "pro", name: "Pro", description: "贵" }] }],
+            failures: [{ id: "other", name: "Other", message: "lookup failed" }],
+          }
+        },
+        async selectModel(req) {
+          modelSelects.push(req)
+          if (req.model === "nope") throw Object.assign(new Error("no such model"), { code: "session/model-unavailable" })
+          modelNow = { provider: req.provider, model: req.model }
+          return { selected: modelNow }
         },
         async cancel(req) {
           cancels.push(req)
@@ -239,6 +279,63 @@ const blockedPet = await fetch(BASE + '/dsh-pet/pet.js')
 check('栅栏拒绝时连静态也不放行', blockedPet.status === 403)
 fenceVerdict = undefined
 
+// 栅栏自己坏了（服务缺失 / 抛异常）必须拒绝，不能默认放行
+fenceMode = 'missing'
+check('connection 服务缺失时拒绝', (await fetch(BASE + '/dsh-pet/state')).status >= 400)
+fenceMode = 'throw'
+check('栅栏判定抛异常时拒绝', (await fetch(BASE + '/dsh-pet/state')).status >= 400)
+fenceMode = 'ok'
+
+// ————————————————————————————————————————————————————————————
+// 约束文件 + 桌面版通行证
+// ————————————————————————————————————————————————————————————
+
+const writePolicy = (p) => fs.writeFileSync(POLICY_FILE, typeof p === 'string' ? p : JSON.stringify(p))
+const DEFAULT_POLICY = { routes: { say: true, cancel: true, control: true, model: true }, desktop: { enabled: true, allowedPorts: [] } }
+const policyNow = fs.existsSync(POLICY_FILE) ? JSON.parse(fs.readFileSync(POLICY_FILE, 'utf8')) : null
+check('启动时生成了默认约束文件', JSON.stringify(policyNow) === JSON.stringify(DEFAULT_POLICY), JSON.stringify(policyNow))
+
+const deskToken = JSON.parse(fs.readFileSync(DESKTOP_FILE, 'utf8')).token
+const withToken = (p, init = {}) =>
+  fetch(BASE + p, { ...init, headers: { ...(init.headers || {}), Cookie: 'dsh_pet_desk=' + deskToken } })
+fenceVerdict = 403
+check('通行证在栅栏拒绝时仍可用', (await withToken('/dsh-pet/state')).status === 200)
+fenceMode = 'missing'
+check('栅栏缺失时通行证仍可用', (await withToken('/dsh-pet/state')).status === 200)
+fenceMode = 'ok'
+writePolicy({ ...DEFAULT_POLICY, desktop: { enabled: false, allowedPorts: [] } })
+check('desktop.enabled=false 时通行证失效', (await withToken('/dsh-pet/state')).status === 403)
+fenceVerdict = undefined
+
+// 握手：壳子先要插件证明自己知道通行证，再把通行证交出去
+const nonce = 'ab'.repeat(16)
+const proofOf = (n, port) => createHmac('sha256', deskToken).update(`${n}:${port}`).digest('hex')
+check('desktop.enabled=false 时握手拒绝', (await fetch(BASE + `/dsh-pet/hello?n=${nonce}`)).status === 403)
+writePolicy(DEFAULT_POLICY)
+fenceVerdict = 403
+const hello = await fetch(BASE + `/dsh-pet/hello?n=${nonce}`)
+const helloBody = hello.status === 200 ? await hello.json() : {}
+check('握手不需要会话 cookie，且证明绑定了端口', helloBody.proof === proofOf(nonce, PORT), `status=${hello.status}`)
+check('握手不回传通行证本身', !JSON.stringify(helloBody).includes(deskToken))
+check('握手拒绝非法 nonce', (await fetch(BASE + '/dsh-pet/hello?n=xyz')).status === 400)
+fenceVerdict = undefined
+
+// 接口开关：关掉的接口 403，写坏的约束文件按最严处理
+const post = (p, body) => fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const promptsBefore = prompts.length
+writePolicy({ ...DEFAULT_POLICY, routes: { say: false, cancel: false, control: false } })
+check('routes.say=false 时 /say 被拒且没进会话', (await post('/dsh-pet/say', { text: 'hi' })).status === 403 && prompts.length === promptsBefore)
+check('routes.cancel=false 时 /cancel 被拒', (await post('/dsh-pet/cancel', {})).status === 403)
+check('routes.control=false 时 /control 被拒', (await post('/dsh-pet/control', { expression: 'smile' })).status === 403)
+writePolicy('{ 这不是 JSON')
+check('约束文件写坏时 /say 按最严处理', (await post('/dsh-pet/say', { text: 'hi' })).status === 403 && prompts.length === promptsBefore)
+fenceVerdict = 403
+check('约束文件写坏时通行证失效', (await withToken('/dsh-pet/state')).status === 403)
+fenceVerdict = undefined
+writePolicy({ routes: { say: true } })
+check('约束文件缺字段时该项按最严处理', (await post('/dsh-pet/cancel', {})).status === 403)
+writePolicy(DEFAULT_POLICY)
+
 // ————————————————————————————————————————————————————————————
 // index.html 注入
 // ————————————————————————————————————————————————————————————
@@ -290,6 +387,38 @@ check('/say 给 prompt 传了 AbortSignal（漏传必炸）', promptSignals.leng
 
 await fetch(BASE + '/dsh-pet/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
 check('/cancel 走通', cancels.length === 1 && cancels[0].sessionId === 'sess-1')
+
+// 模型：列出 / 切换（走 DSH 官方 session.models / session.selectModel）
+const models = await (await fetch(BASE + "/dsh-pet/models")).json()
+check("/models 列出当前会话的模型", models.ok === true && models.routable === true && models.current.model === "flash" && models.groups[0].models.length === 2, JSON.stringify(models.current))
+check("/models 带上查询失败的提供方", models.failures.length === 1 && models.failures[0].message === "lookup failed")
+const pick = await fetch(BASE + "/dsh-pet/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "deepseek", model: "pro" }) })
+const pickBody = await pick.json()
+check("/model 切换走 selectModel", pick.status === 200 && pickBody.ok === true && pickBody.selected.model === "pro" && modelSelects.at(-1).sessionId === "sess-1")
+const bad = await fetch(BASE + "/dsh-pet/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "deepseek", model: "nope" }) })
+check("/model 宿主拒绝时把原因带回来", bad.status >= 400 && (await bad.json()).error === "no such model")
+check("/model 缺参数拒绝", (await fetch(BASE + "/dsh-pet/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status === 400)
+check("/model 只收 POST", (await fetch(BASE + "/dsh-pet/model")).status === 405)
+writePolicy({ ...DEFAULT_POLICY, routes: { ...DEFAULT_POLICY.routes, model: false } })
+const selBefore = modelSelects.length
+check("routes.model=false 时 /model 被拒", (await fetch(BASE + "/dsh-pet/model", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "deepseek", model: "flash" }) })).status === 403 && modelSelects.length === selBefore)
+check("routes.model=false 时 /models 仍可读", (await fetch(BASE + "/dsh-pet/models")).status === 200)
+// 定时任务：只读列出 DSH 定时服务里的任务（创建 / 到点执行都由 DSH 负责）
+const tasks = await (await fetch(BASE + "/dsh-pet/tasks")).json()
+const t1 = tasks.tasks && tasks.tasks[0]
+check("/tasks 列出任务的类型 / 时间 / 名称 / 内容", tasks.ok === true && tasks.tasks.length === 2 && t1.kind === "daily" && t1.time === "09:00:00" && t1.timeZone === "Asia/Shanghai" && t1.title === "早报" && t1.prompt === "总结昨天的邮件" && t1.scheduledAt === "2026-10-15T01:00:00.000Z")
+check("/tasks 带状态与上次执行时间", t1.status === "active" && t1.lastDeliveredAt === "2026-10-14T01:00:02.000Z" && tasks.tasks[1].status === "inactive")
+scheduleOn = false
+const noSched = await fetch(BASE + "/dsh-pet/tasks")
+check("DSH 没开定时服务时提示去启用", noSched.status === 503 && /自动化任务/.test((await noSched.json()).error))
+scheduleOn = true
+fenceVerdict = 403
+check("/tasks 走信任栅栏", (await fetch(BASE + "/dsh-pet/tasks")).status === 403)
+fenceVerdict = undefined
+writePolicy(DEFAULT_POLICY)
+fenceVerdict = 403
+check("/models 走信任栅栏", (await fetch(BASE + "/dsh-pet/models")).status === 403)
+fenceVerdict = undefined
 
 // ————————————————————————————————————————————————————————————
 // 钱包：/dsh-pet/hud（余额 / 峰谷 / 本轮消耗）—— 右键 HUD 的数据源
@@ -379,6 +508,15 @@ ev(
   { id: 'sess-1' },
   { type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: '看一下' }] }, usage: { inputTokens: 10, outputTokens: 5 } } },
 )
+// 中间步骤：带思考 + 过程话 + 工具调用 → 不是最终回答；最后一条只有正文 → 最终回答
+ev(
+  { id: 'sess-1' },
+  { type: 'assistant/message', data: { turn: 1, step: 2, message: { content: [{ type: 'reasoning', text: '内心想法' }, { type: 'text', text: '我先查一下' }, { type: 'tool-call', toolCallId: 'c2', name: 'bash' }] } } },
+)
+ev(
+  { id: 'sess-1' },
+  { type: 'assistant/message', data: { turn: 1, step: 3, message: { content: [{ type: 'reasoning', text: '再想想' }, { type: 'text', text: '**结论**：一切正常' }] } } },
+)
 ev({ id: 'sess-1' }, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
 
 // 逐字流
@@ -410,6 +548,10 @@ check('步骤开始已推送', types.includes('step-start'))
 check('工具调用已推送（含中文标签）', received.some((m) => m.t === 'tool-call' && m.label === '跑命令'), JSON.stringify(received.find((m) => m.t === 'tool-call') || {}))
 check('工具结果已推送（带耗时）', received.some((m) => m.t === 'tool-result' && typeof m.ms === 'number'))
 check('assistant 消息已推送（含用量）', received.some((m) => m.t === 'assistant' && m.usage && m.usage.input === 10))
+const asst = received.filter((m) => m.t === 'assistant')
+check('回答文字不含思考过程', asst.length >= 3 && asst.every((m) => !/内心想法|再想想/.test(m.text)), JSON.stringify(asst.map((m) => m.text)))
+check('带工具调用的是过程话，不算最终回答', asst.find((m) => m.step === 2).final === false)
+check('只有正文的那条是最终回答', asst.find((m) => m.step === 3).final === true && asst.find((m) => m.step === 3).text === '**结论**：一切正常')
 check('逐字流已推送', received.filter((m) => m.t === 'delta').map((m) => m.text).join('') === '你好', received.filter((m) => m.t === 'delta').map((m) => m.text).join('') || '(空)')
 check('轮次结束已推送', received.some((m) => m.t === 'turn-end' && m.reason && m.reason.kind === 'completed'))
 check('control 指令已广播', received.some((m) => m.t === 'control' && m.mood === 'happy' && m.say === '嗨'))
