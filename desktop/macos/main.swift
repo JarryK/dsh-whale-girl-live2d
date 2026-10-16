@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.accessory)   // 不占 Dock、不抢焦点
+        installEditMenu()
         // 关键：别让 macOS 把「没人操作的透明窗口」判成 App Nap 而掐掉 requestAnimationFrame。
         // 被掐的症状极隐蔽：页面不报错、模型数据也加载了，但 rAF 永不触发 →
         // 前端启动流程停在「等一帧」那一步，于是既画不出她、也连不上事件流。
@@ -287,6 +288,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     // MARK: - 拖动 / 点击
+
+    /// ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z 靠主菜单里的「编辑」项分发给网页；
+    /// 没有主菜单时这些快捷键全部无效（输入框粘贴不进去、选中的字复制不出来）。
+    /// accessory App 不显示菜单栏，但快捷键照样走这份菜单。
+    func installEditMenu() {
+        let main = NSMenu()
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "编辑")
+        edit.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+        NSApp.mainMenu = main
+    }
 
     func installMonitors() {
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) {

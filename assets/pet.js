@@ -581,7 +581,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   background:var(--dshp-bg);color:var(--dshp-fg);border:1px solid var(--dshp-line);
   border-radius:calc(var(--dshp-radius) * var(--dshp-s));
   padding:calc(9px * var(--dshp-s)) calc(12px * var(--dshp-s)) calc(8px * var(--dshp-s));
-  box-shadow:0 8px 28px rgba(10,14,30,.18);backdrop-filter:blur(14px) saturate(1.3);
+  box-shadow:0 2px 8px rgba(10,14,30,.10),0 1px 2px rgba(10,14,30,.06);backdrop-filter:blur(14px) saturate(1.3);
   font-size:calc(12.5px * var(--dshp-s));line-height:1.55;opacity:0;visibility:hidden;
   transition:opacity .18s ease,transform .18s ease;overflow-wrap:anywhere;word-break:break-word}
 .dshp-bubble.dshp-on{opacity:1;visibility:visible;
@@ -608,19 +608,15 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   bottom:calc(-40px * var(--dshp-ds));display:flex;gap:calc(7px * var(--dshp-ds));
   width:max-content;white-space:nowrap;
   pointer-events:auto;opacity:0;transition:opacity .22s ease}
-/* ——— 工作简报：头顶的「信封」+ 点开的大号简报面板 ———
+/* ——— 工作简报：底部工具栏里的「信封」按钮 + 点开的大号简报面板 ———
    信封是画出来的（不是 emoji）：白纸 + 鲸鱼蓝描边 + 折口，深浅背景下都清楚；
-   角标是微信那种「红圈白字」。整体小、浮在她头顶右上，不挡她本人。 */
-.dshp-mail{position:absolute;left:50%;bottom:100%;pointer-events:auto;cursor:pointer;
-  transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(34px + var(--dshp-shift-y,0px)));
-  width:34px;height:28px;padding:0;border:0;background:transparent;display:grid;place-items:center;
-  filter:drop-shadow(0 3px 7px rgba(10,20,50,.28));transition:transform .16s ease}
-.dshp-mail:hover{transform:translate(calc(-50% + var(--dshp-shift,0px) + 44px),calc(30px + var(--dshp-shift-y,0px))) scale(1.06)}
-.dshp-mail svg{width:32px;height:25px;display:block}
+   角标是微信那种「红圈白字」。跟「说话」等按钮排在同一行，一起显示、一起隐藏。 */
+.dshp-btn.dshp-mail{position:relative;display:inline-grid;place-items:center;cursor:pointer}
+.dshp-mail svg{width:calc(19px * var(--dshp-ds));height:calc(15px * var(--dshp-ds));display:block}
 .dshp-mail .paper{fill:#f8fbff;stroke:#3b62f6;stroke-width:1.6}
 .dshp-mail .flap{fill:none;stroke:#3b62f6;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .dshp-mail .inner{fill:#dbe6ff}
-.dshp-mail-badge{position:absolute;right:-2px;bottom:-3px;min-width:15px;height:15px;padding:0 4px;
+.dshp-mail-badge{position:absolute;right:-6px;top:-6px;min-width:15px;height:15px;padding:0 4px;
   border-radius:999px;background:#ff3b30;color:#fff;font-size:10.5px;font-weight:700;line-height:15px;
   text-align:center;border:1.5px solid var(--dshp-bg);box-sizing:content-box}
 .dshp-mail.dshp-mail-new svg{animation:dshp-mail-nudge 1.9s ease-in-out infinite}
@@ -708,7 +704,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   background:var(--dshp-bg);color:var(--dshp-fg);
   border:1px solid var(--dshp-line);border-radius:calc(var(--dshp-radius) * var(--dshp-ps));
   padding:calc(10px * var(--dshp-ps));
-  box-shadow:0 14px 40px rgba(10,14,30,.26);backdrop-filter:blur(16px) saturate(1.3);
+  box-shadow:0 3px 10px rgba(10,14,30,.11),0 1px 2px rgba(10,14,30,.07);backdrop-filter:blur(16px) saturate(1.3);
   opacity:0;visibility:hidden;transition:opacity .16s ease,transform .16s ease;
   font-size:calc(12px * var(--dshp-ps))}
 /* 面板在缩放被冻结时不能再跟着动，否则拖「大小」滑块的时候轨道会从鼠标底下跑掉 */
@@ -721,20 +717,42 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   border-radius:calc(9px * var(--dshp-ps));
   padding:calc(7px * var(--dshp-ps)) calc(9px * var(--dshp-ps));outline:none}
 .dshp-panel textarea:focus{border-color:var(--dshp-accent)}
-.dshp-composer{width:min(calc(360px * var(--dshp-ps)),92vw)}
-.dshp-chat-log{display:flex;flex-direction:column;gap:7px;max-height:calc(300px * var(--dshp-ps));
-  overflow-y:auto;overscroll-behavior:contain;margin:calc(14px * var(--dshp-ps)) 0 8px;padding-right:2px}
-.dshp-msg{max-width:86%;padding:6px 10px;border-radius:12px;line-height:1.6;word-break:break-word;
-  user-select:text;-webkit-user-select:text;cursor:text;font-size:calc(12.5px * var(--dshp-ps))}
-.dshp-msg-me{align-self:flex-end;background:var(--dshp-accent);color:#fff;border-bottom-right-radius:4px;white-space:pre-wrap}
-.dshp-msg-her{align-self:flex-start;border:1px solid var(--dshp-line);border-bottom-left-radius:4px}
-.dshp-msg p{margin:0 0 6px}.dshp-msg p:last-child{margin-bottom:0}
-.dshp-msg ul,.dshp-msg ol{margin:2px 0 6px;padding-left:18px}
-.dshp-msg pre{margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:rgba(127,140,180,.14);
+.dshp-composer{box-sizing:border-box;width:min(calc(420px * var(--dshp-ps)),calc(100vw - 40px))}
+/* 样式照 DSH 网页版的对话页：你的话是右侧浅蓝圆角块，她的回答不套框、整宽排版。
+   高度由 placePanel 按头顶剩余空间设 max-height（不用 flex 撑，见上面面板的注释）；
+   上下边缘渐隐，滚动时不是一刀切 */
+.dshp-chat-log{display:flex;flex-direction:column;gap:calc(14px * var(--dshp-ps));max-height:calc(420px * var(--dshp-ps));
+  overflow-y:auto;overscroll-behavior:contain;margin:calc(18px * var(--dshp-ps)) 0 10px;padding:6px 4px 6px 2px;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%)}
+.dshp-msg{line-height:1.7;word-break:break-word;
+  user-select:text;-webkit-user-select:text;cursor:text;font-size:calc(13px * var(--dshp-ps))}
+.dshp-msg-me{align-self:flex-end;max-width:80%;padding:8px 13px;border-radius:16px;
+  background:rgba(59,98,246,.11);white-space:pre-wrap}
+.dshp-root[data-dshp-theme="dark"] .dshp-msg-me{background:rgba(123,155,255,.2)}
+@media (prefers-color-scheme:dark){.dshp-root:not([data-dshp-theme="light"]) .dshp-msg-me{background:rgba(123,155,255,.2)}}
+.dshp-msg-her{align-self:stretch;padding:0 2px}
+.dshp-md{white-space:normal}
+.dshp-md p{margin:0 0 8px}.dshp-md p:last-child{margin-bottom:0}
+.dshp-md ul,.dshp-md ol{margin:2px 0 8px;padding-left:20px}
+.dshp-md li{margin:2px 0}
+.dshp-md hr{border:0;border-top:1px solid var(--dshp-line);margin:10px 0}
+.dshp-md pre{margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:rgba(127,140,180,.14);
   overflow-x:auto;white-space:pre;font:11.5px/1.5 ui-monospace,Menlo,monospace}
-.dshp-msg code{font:11.5px ui-monospace,Menlo,monospace;background:rgba(127,140,180,.16);padding:0 3px;border-radius:4px}
-.dshp-msg pre code{background:none;padding:0}
-.dshp-msg-h{font-weight:600;margin:4px 0}
+.dshp-md code{font:11.5px ui-monospace,Menlo,monospace;background:rgba(127,140,180,.16);padding:0 3px;border-radius:4px}
+.dshp-md pre code{background:none;padding:0}
+.dshp-msg-h{font-weight:650;margin:10px 0 6px;font-size:1.08em}
+.dshp-msg-h1{font-size:1.28em}.dshp-msg-h2{font-size:1.18em}
+.dshp-msg-h:first-child{margin-top:0}
+/* 输入区：一个大圆角框，按钮放在框内右下角 */
+.dshp-input{border:1px solid var(--dshp-line);border-radius:calc(16px * var(--dshp-ps));
+  padding:calc(8px * var(--dshp-ps)) calc(10px * var(--dshp-ps)) calc(7px * var(--dshp-ps));background:rgba(255,255,255,.55)}
+.dshp-root[data-dshp-theme="dark"] .dshp-input{background:rgba(255,255,255,.04)}
+@media (prefers-color-scheme:dark){.dshp-root:not([data-dshp-theme="light"]) .dshp-input{background:rgba(255,255,255,.04)}}
+.dshp-input:focus-within{border-color:var(--dshp-accent)}
+.dshp-panel .dshp-input textarea{border:0;padding:2px;line-height:1.5;height:auto;overflow-y:auto}
+.dshp-input .dshp-row{margin-top:4px}
+.dshp-input .dshp-btn{border-radius:999px}
 .dshp-row{display:flex;gap:6px;align-items:center;margin-top:7px;flex-wrap:wrap}
 .dshp-grow{flex:1}
 .dshp-tabs{display:flex;gap:3px;margin-bottom:7px;border-bottom:1px solid var(--dshp-line);padding-bottom:6px}
@@ -766,7 +784,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   background:var(--dshp-bg);color:var(--dshp-fg);
   border:1px solid var(--dshp-line);border-radius:calc(var(--dshp-radius) * var(--dshp-ps));
   padding:calc(13px * var(--dshp-ps)) calc(14px * var(--dshp-ps)) calc(10px * var(--dshp-ps));
-  box-shadow:0 20px 54px rgba(10,14,30,.34);backdrop-filter:blur(18px) saturate(1.4);
+  box-shadow:0 4px 12px rgba(10,14,30,.14),0 1px 3px rgba(10,14,30,.08);backdrop-filter:blur(18px) saturate(1.4);
   opacity:0;visibility:hidden;
   transition:opacity .18s ease,transform .18s cubic-bezier(.2,.9,.3,1);
   font-size:calc(12px * var(--dshp-ps))}
@@ -775,9 +793,9 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
 /* 刚弹出来那一下给一圈呼吸光，提醒「看这里」——冒烟效果用 box-shadow，不动 transform */
 .dshp-hud.dshp-flash{animation:dshp-hud-flash 1.15s ease-out 2}
 @keyframes dshp-hud-flash{
-  0%{box-shadow:0 20px 54px rgba(10,14,30,.34),0 0 0 0 rgba(124,92,255,.5)}
-  70%{box-shadow:0 20px 54px rgba(10,14,30,.34),0 0 0 14px rgba(124,92,255,0)}
-  100%{box-shadow:0 20px 54px rgba(10,14,30,.34),0 0 0 0 rgba(124,92,255,0)}}
+  0%{box-shadow:0 4px 12px rgba(10,14,30,.14),0 1px 3px rgba(10,14,30,.08),0 0 0 0 rgba(124,92,255,.5)}
+  70%{box-shadow:0 4px 12px rgba(10,14,30,.14),0 1px 3px rgba(10,14,30,.08),0 0 0 14px rgba(124,92,255,0)}
+  100%{box-shadow:0 4px 12px rgba(10,14,30,.14),0 1px 3px rgba(10,14,30,.08),0 0 0 0 rgba(124,92,255,0)}}
 .dshp-hud-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
   font-size:calc(11px * var(--dshp-ps));opacity:.6;letter-spacing:.3px;
   padding-right:calc(20px * var(--dshp-ps))}
@@ -1757,7 +1775,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
   function placePanel(panel) {
     if (!panel) return
     const vw = window.innerWidth
-    const pad = 10
+    const pad = 18 // 留够阴影的位置：桌宠窗口是透明的，贴边的阴影会被窗口边切出一道直线
     panel.style.setProperty('--dshp-shift', '0px')
     if (!panel.classList.contains('dshp-on')) return
     const w = panel.getBoundingClientRect().width || 0
@@ -1767,10 +1785,20 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     // 面板基准是「以桌宠中心居中」（left:50% + translateX(-50%)），所以位移 = 锚点 - 根节点中心
     let shift = anchor - (r.left + r.width / 2)
     // 靠墙时往反方向挪，保证整个面板（含 × ）都在屏幕里
-    const left = anchor + shift - w / 2
+    // 面板中心 = 根节点中心 + shift = anchor，所以左边就是 anchor - w/2（之前多加了一次 shift，偏得越多越夹不住）
+    const left = anchor - w / 2
     if (left < pad) shift += pad - left
     else if (left + w > vw - pad) shift -= left + w - (vw - pad)
     panel.style.setProperty('--dshp-shift', Math.round(shift) + 'px')
+    // 聊天框：记录区最多占到「头顶剩余空间 − 输入区」，消息再多也只在里面滚，不会顶出窗口被截断
+    const log = ui.composer && panel === ui.composer.el && ui.composer.log
+    if (log) {
+      const rest = panel.getBoundingClientRect().height - log.getBoundingClientRect().height
+      // 上边再多留一个 pad：面板打开时还带着几像素的位移动画，量到的位置会偏
+      const room = panel.getBoundingClientRect().bottom - pad * 2 - rest
+      const ps = parseFloat(getComputedStyle(ui.root).getPropertyValue('--dshp-ps')) || 1
+      log.style.maxHeight = Math.round(Math.max(90, Math.min(room, 420 * ps))) + 'px'
+    }
     // 纵向兜底：桌宠被拖到屏幕顶端时，面板别伸到屏幕外面去
     const top = panel.getBoundingClientRect().top
     panel.style.setProperty('--dshp-shift-y', top < pad ? Math.round(pad - top) + 'px' : '0px')
@@ -1782,7 +1810,6 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     placePanel(ui && ui.hud && ui.hud.el)
     placePanel(ui && ui.bubble && ui.bubble.el)
     placePanel(ui && ui.report && ui.report.el)   // 工作简报面板
-    placePanel(ui && ui.mail && ui.mail.el)       // 头顶信封
   }
 
   function fitModel(explicitHeight) {
@@ -2477,12 +2504,15 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     const chatLog = $('div', 'dshp-chat-log')
     chatLog.appendChild($('div', 'dshp-hint dshp-chat-empty', '跟她说点什么吧～这个会话里的对话都会显示在这里。'))
     const ta = $('textarea')
+    ta.rows = 1
     ta.placeholder = '跟 DSH 说点什么…（Enter 发送 / Shift+Enter 换行）'
     const crow = $('div', 'dshp-row')
     const sendBtn = $('button', 'dshp-btn dshp-primary', '发送')
     const cancelBtn = $('button', 'dshp-btn', '打断')
     crow.append($('span', 'dshp-grow'), cancelBtn, sendBtn)
-    composer.append(chatLog, ta, crow)
+    const inputBox = $('div', 'dshp-input')
+    inputBox.append(ta, crow)
+    composer.append(chatLog, inputBox)
     addCloseButton(composer)
 
     const menu = $('div', 'dshp-panel dshp-menu')
@@ -2584,7 +2614,8 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         } else {
           streaming = false
           buffer = String(text == null ? '' : text)
-          body.textContent = buffer
+          if (opts.md) body.replaceChildren(mdBlock('', buffer))
+          else body.textContent = buffer
         }
         body.scrollTop = body.scrollHeight
         foot.textContent = opts.foot || ''
@@ -2650,7 +2681,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
 
   function ensureMailUI() {
     if (mail.el || !ui || !ui.root) return
-    const badge = $('button', 'dshp-mail')
+    const badge = $('button', 'dshp-btn dshp-icon dshp-mail')
     badge.title = '工作简报 · 点开看完整内容'
     badge.innerHTML =
       '<svg viewBox="0 0 32 25" aria-hidden="true">' +
@@ -2676,13 +2707,13 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     head.appendChild(close)
     const body = $('div', 'dshp-report-body')
     panel.append(head, body)
-    ui.root.append(badge, panel)
+    ui.dock.appendChild(badge) // 放进底部工具栏，跟着工具栏一起显示 / 隐藏
+    ui.root.appendChild(panel)
     mail.el = badge
     mail.panel = panel
     mail.body = body
     // 登记到 ui 上：这样 clampPanels() 会像对待菜单/钱包那样把它夹进屏幕
     //（上一版漏了这步，面板右侧被切掉 —— 自检截图里能直接看到）
-    ui.mail = { el: badge }
     ui.report = { el: panel }
   }
 
@@ -2712,7 +2743,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
       const t = new Date(it.at)
       const hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0')
       const src = it.src ? ' · 来源：' + it.src : ''
-      row.append($('div', 'dshp-report-title', it.title + ' · ' + hh + src), $('div', 'dshp-report-text', it.body))
+      row.append($('div', 'dshp-report-title', it.title + ' · ' + hh + src), mdBlock('dshp-report-text', it.body))
       // 右上角的 × —— 看完就叉掉这一条
       const x = $('button', 'dshp-report-x', '×')
       x.title = '看完了，移除这条'
@@ -3707,8 +3738,20 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     const { ta, send, cancel } = u.composer
     const stop = (e) => e.stopPropagation()
     for (const ev of ['keydown', 'keyup', 'keypress']) ta.addEventListener(ev, stop)
+    // 输入框跟着内容长高：一行起步，最多三行，再多就在框里滚
+    const fitInput = () => {
+      ta.style.height = 'auto'
+      const cs = getComputedStyle(ta)
+      const line = parseFloat(cs.lineHeight) || 18
+      const pads = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+      ta.style.height = Math.min(ta.scrollHeight, line * 3 + pads) + 'px'
+      placePanel(u.composer.el) // 输入框变高，记录区相应让出空间
+    }
+    ta.addEventListener('input', fitInput)
     ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      // 中文输入法按回车上屏时，WebKit 先结束组字再发 keydown（isComposing 已是 false），
+      // 只能靠 keyCode 229 认出「这一下是输入法的」，否则上屏英文就直接发出去了
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault()
         doSend()
       }
@@ -3744,10 +3787,15 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         const j = await r.json()
         if (!j.ok) throw new Error(j.error || '发送失败')
         ta.value = ''
+        fitInput()
         ta.focus() // 聊天框不关：你的话会经事件流出现在右边，回答出现在左边
         act({ mood: 'listening', props: IDLE_PROPS, ms: 2600 })
       } catch (err) {
-        u.bubble.show('发不出去：' + err.message, { name: 'DS 鲸鱼娘', sticky: true })
+        // fetch 本身失败（WebKit 报 "Load failed"）= 宿主连不上，多半是 DSH 退出了
+        const why = err instanceof TypeError ? '连不上 DSH（DSH 没开或已经退出）' : err.message
+        // 聊天框开着时气泡被它挡住，错误要写进聊天记录，不然看起来就是「点发送没反应」
+        if (chatOpen()) chatAdd('her', '⚠️ 发不出去：' + why)
+        else u.bubble.show('发不出去：' + why, { name: 'DS 鲸鱼娘', sticky: true })
       } finally {
         send.disabled = false
       }
@@ -4337,12 +4385,47 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
 
   /** 把回答里常见的 Markdown 排成 DOM：代码块 / 表格 / 标题 / 列表 / 段落，行内只认 `代码` 和 **粗体** */
   function mdInline(parent, text) {
-    for (const part of String(text).split(/(`[^`]+`|\*\*[^*]+\*\*)/)) {
+    // 不用后行断言：老版 Safari（macOS 13 自带）不认，整个脚本会直接语法错误
+    // 只认 *斜体*、不认 _斜体_：下划线在 snake_case 名字里太常见
+    const re = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*\s](?:[^*]*[^*\s])?\*)/
+    for (const part of String(text).split(re)) {
       if (!part) continue
+      const wrap = (tag, n) => parent.appendChild($(tag, null, part.slice(n, -n)))
       if (part.startsWith('`') && part.endsWith('`') && part.length > 1) parent.appendChild($('code', null, part.slice(1, -1)))
-      else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) parent.appendChild($('b', null, part.slice(2, -2)))
+      else if (part.startsWith('***') && part.endsWith('***') && part.length > 6) {
+        const b = $('b')
+        b.appendChild($('i', null, part.slice(3, -3)))
+        parent.appendChild(b)
+      } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) wrap('b', 2)
+      else if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) wrap('s', 2)
+      else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) wrap('i', 1)
       else parent.appendChild(document.createTextNode(part))
     }
+  }
+  /**
+   * 气泡用的回答预览：按整行截，免得把 **粗体** 这类成对的记号从中间切开、露出半截星号。
+   * 第一行就超长时只能硬切那一行，并去掉那一行里的记号。
+   */
+  function mdPreview(text, max) {
+    if (text.length <= max) return text
+    const out = []
+    let len = 0
+    for (const line of text.split('\n')) {
+      if (len + line.length > max) {
+        if (!out.length) out.push(line.slice(0, max).replace(/[*~`]/g, ''))
+        break
+      }
+      out.push(line)
+      len += line.length + 1
+    }
+    return out.join('\n').trimEnd() + '…（完整内容在对话框）'
+  }
+
+  /** 一个带 Markdown 排版的块：气泡、工作简报、聊天记录共用同一套渲染和样式 */
+  function mdBlock(cls, text) {
+    const el = $('div', (cls ? cls + ' ' : '') + 'dshp-md')
+    el.appendChild(mdToDom(text))
+    return el
   }
   function mdToDom(text) {
     const frag = document.createDocumentFragment()
@@ -4363,8 +4446,11 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         const rows = []
         while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++].trim())
         frag.appendChild($('pre', null, rows.filter((r) => !/^\|[\s:|-]+\|$/.test(r)).join('\n')))
+      } else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        frag.appendChild($('hr'))
+        i++
       } else if (/^#{1,6}\s/.test(line)) {
-        const h = $('div', 'dshp-msg-h')
+        const h = $('div', 'dshp-msg-h dshp-msg-h' + Math.min(3, line.match(/^#+/)[0].length))
         mdInline(h, line.replace(/^#+\s*/, ''))
         frag.appendChild(h)
         i++
@@ -4380,7 +4466,7 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
         i++
       } else {
         const para = []
-        while (i < lines.length && lines[i].trim() && !/^\s*(```|\||#{1,6}\s)/.test(lines[i]) && !isList(lines[i])) para.push(lines[i++])
+        while (i < lines.length && lines[i].trim() && !/^\s*(```|\||#{1,6}\s|-{3,}\s*$|\*{3,}\s*$|_{3,}\s*$)/.test(lines[i]) && !isList(lines[i])) para.push(lines[i++])
         const p = $('p')
         para.forEach((l, k) => {
           if (k) p.appendChild($('br'))
@@ -4397,11 +4483,12 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
     const log = ui.composer.log
     const empty = log.querySelector('.dshp-chat-empty')
     if (empty) empty.remove()
-    const msg = $('div', 'dshp-msg ' + (who === 'me' ? 'dshp-msg-me' : 'dshp-msg-her'))
+    const msg = $('div', 'dshp-msg ' + (who === 'me' ? 'dshp-msg-me' : 'dshp-msg-her dshp-md'))
     if (who === 'me') msg.textContent = text
     else msg.appendChild(mdToDom(text))
     log.appendChild(msg)
     while (log.children.length > CHAT_MAX) log.firstChild.remove()
+    if (chatOpen()) placePanel(ui.composer.el)
     log.scrollTop = log.scrollHeight
   }
   const chatOpen = () => ui.composer.el.classList.contains('dshp-on')
@@ -4472,9 +4559,9 @@ body.dshp-pet-hidden .dshp-tab{display:flex}
           setStatus('speaking')
           agent.lastText = m.text.slice(0, 4000)
           chatAdd('her', agent.lastText)
-          const preview = agent.lastText.length > 160 ? agent.lastText.slice(0, 160) + '…（完整内容在对话框）' : agent.lastText
+          const preview = mdPreview(agent.lastText, 160)
           // 回答气泡挂 1 分钟后自己关（work 让它不被戳一下之类的互动气泡顶掉）
-          if (!chatOpen()) ui.bubble.show(preview, { name: 'DS 鲸鱼娘', work: true, ttl: 60000 })
+          if (!chatOpen()) ui.bubble.show(preview, { name: 'DS 鲸鱼娘', work: true, ttl: 60000, md: true })
           if (agent.lastText.length > 60) pushReport('任务简报', agent.lastText)
         }
         if (m.usage) {
