@@ -103,7 +103,7 @@ if (authorStr.includes('Andersen216')) {
   ok('署名：Andersen216' + (authorStr.includes('github.com/Andersen216') ? '（带 GitHub 主页链接）' : '（建议在 author.url 里补上 GitHub 主页）'))
 } else { bad(`package.json 的 author 不是 Andersen216：${authorStr}`); problems++ }
 
-for (const f of ['AUTHORS.md', 'PROVENANCE.md', 'LICENSE', 'README.md', 'CHANGELOG.md', 'cordis.patch.yml']) {
+for (const f of ['AUTHORS.md', 'PROVENANCE.md', 'LICENSE', 'README.md', 'README.original.md', 'CHANGELOG.md', 'cordis.patch.yml']) {
   if (fs.existsSync(path.join(ROOT, f))) ok(`文件在：${f}`)
   else { bad(`缺文件：${f}`); problems++ }
 }

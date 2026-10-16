@@ -41,7 +41,7 @@ const pack = JSON.parse(execFileSync('npm', ['--cache', CACHE, 'pack', '--dry-ru
 const p = pack[0];
 const has = (f) => p.files.some((x) => x.path === f);
 info(`打包 ${p.files.length} 个文件，压缩 ${(p.size / 1048576).toFixed(1)} MB / 解包 ${(p.unpackedSize / 1048576).toFixed(1)} MB`);
-for (const f of ['lib/index.js', 'cordis.patch.yml', 'README.md', 'LICENSE', 'NOTICE.md', 'tools/pet-ctl.mjs']) {
+for (const f of ['lib/index.js', 'cordis.patch.yml', 'README.md', 'README.original.md', 'LICENSE', 'NOTICE.md', 'tools/pet-ctl.mjs']) {
   has(f) ? ok(`包内含 ${f}`) : bad(`包内缺少 ${f}（检查 package.json 的 files）`);
 }
 if (!p.files.some((x) => x.path.endsWith('.moc3'))) bad('包内没有模型本体（.moc3）');
